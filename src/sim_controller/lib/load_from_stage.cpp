@@ -192,17 +192,32 @@ ASIM_EXPORT void getRANSimAttribute(aerial::sim::simulation_state *state) {
 
 ASIM_EXPORT void getMobilityParams(aerial::sim::simulation_state *state) {
   aerial::sim::mm::config cfg{};
-
   UsdStageRefPtr stage = state->get_aerial_stage().int_stage;
-
   omniClientLiveProcess();
-
   auto node = stage->GetPrimAtPath(SdfPath("/Scenario"));
-
- // node.GetAttribute(TfToken("sim:duration")).Get(&(cfg.duration));
-  //node.GetAttribute(TfToken("sim:interval")).Get(&(cfg.interval));
-  cfg.duration = 100.0f; //hardcoded values
-  cfg.interval = 0.1f; //hardcoded values 
+  try {
+    const std::string json_path = "src/sim_controller/lib/user_config.json";
+    std::ifstream ifs(json_path);
+    if (ifs.is_open()) {
+      nlohmann::json config_data;
+      ifs >> config_data;
+      const auto &mobility = config_data["mobility_config"];
+      
+      cfg.duration = mobility["duration"].get<float>();
+      cfg.interval = mobility["interval"].get<float>();
+      LOG(INFO) << "Loaded duration and interval from JSON file: duration=" 
+                << cfg.duration << ", interval=" << cfg.interval;
+    } else {
+      LOG(WARNING) << "Could not open JSON config file";
+      cfg.duration = 100.0f; //use default values ....for experiment purpose
+      cfg.interval = 0.1f;
+    }
+  } catch (const std::exception &e) {
+    LOG(ERROR) << "Error parsing JSON config: " << e.what();
+    cfg.duration = 100.0f;
+    cfg.interval = 0.1f;
+  }
+  
   node.GetAttribute(TfToken("sim:num_users")).Get(&(cfg.users));
   node.GetAttribute(TfToken("sim:perc_indoor_procedural_ues"))
       .Get(&(cfg.percentage_indoor_users));
@@ -222,9 +237,7 @@ ASIM_EXPORT void getMobilityParams(aerial::sim::simulation_state *state) {
   const bool no_duration_interval = cfg.duration == 0 || cfg.interval == 0;
   cfg.slot_symbol_mode = no_duration_interval;
   if (no_duration_interval) {
-    LOG(INFO) << "Did not find attributes sim:duration/sim:interval with a "
-                 "positive value so "
-                 "using slot/symbol instead";
+    LOG(INFO) << "Duration or interval is zero, using slot/symbol mode";
     if (cfg.samples_per_slot == 0) {
       cfg.samples_per_slot = 1;
     }
@@ -241,8 +254,7 @@ ASIM_EXPORT void getMobilityParams(aerial::sim::simulation_state *state) {
     cfg.duration = cfg.slots_per_batch * slot_time_in_seconds;
     cfg.interval = slot_time_in_seconds / cfg.samples_per_slot;
   } else {
-    LOG(INFO) << "Found attributes sim:duration/sim:interval so "
-                 "using default value of 1 sample per slot";
+    LOG(INFO) << "Using duration/interval mode";
     cfg.samples_per_slot = 1;
     cfg.slots_per_batch = 0;
   }
@@ -276,9 +288,6 @@ ASIM_EXPORT void getMobilityParams(aerial::sim::simulation_state *state) {
   cfg.panel_ue = ue_panel.GetString();
 
   cfg.scale = UsdGeomGetStageMetersPerUnit(stage);
-
-  // stage->GetMetadata(pxr::TfToken("metersPerUnit"), &(cfg.scale));
-
   cfg.scale = 1 / cfg.scale;
   LOG(VERBOSE) << "scale=" << cfg.scale;
 

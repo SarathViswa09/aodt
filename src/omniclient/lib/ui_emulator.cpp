@@ -377,6 +377,17 @@ int main() {
         }
     }
 
+ asim::mobility_request mrq{};
+  rid = sm->send_message(pid, asim::connector_message::mobility_request,
+                         nlohmann::json(mrq));
+  LOG(DEBUG) << "send mobility_request returned " << rid;
+  while (!lc.updated_mobility) {
+    std::this_thread::sleep_for(poll);
+    if (fatal_error) {
+      return cleanup_app(handle);
+    }
+  }
+ 
   asim::start_sim_request tsr{};
   rid = sm->send_message(pid, asim::connector_message::start_sim_request,
                          nlohmann::json(tsr));

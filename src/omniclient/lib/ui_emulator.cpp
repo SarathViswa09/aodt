@@ -364,6 +364,8 @@ int main() {
     .patterns = {
         {
             .pattern_type = 2,
+            .ampls_theta_complex = {{{1.0f, 0.0f}}},
+            .ampls_phi_complex = {{{1.0f, 0.0f}}}
         }
     }
   };

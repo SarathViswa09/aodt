@@ -7,14 +7,13 @@
 #include <cuda_runtime.h>
 
 #include "logger.hpp"
-#include "json_loader_for_user.hpp"
+
 #include "pxr/usd/usdGeom/xformOp.h"
 #include "pxr/usd/usdGeom/metrics.h"
 #include "mobility_api.hpp"
 #include "cnt_utils.hpp"
 #include "simulation_state.hpp"
 #include <OmniClient.h>
-#include "nlohmann/json.hpp"
 #include <mutex>
 #include "pxr/usd/usdGeom/xformCommonAPI.h"
 #include "pxr/base/gf/matrix4d.h"
@@ -192,32 +191,17 @@ ASIM_EXPORT void getRANSimAttribute(aerial::sim::simulation_state *state) {
 
 ASIM_EXPORT void getMobilityParams(aerial::sim::simulation_state *state) {
   aerial::sim::mm::config cfg{};
+
   UsdStageRefPtr stage = state->get_aerial_stage().int_stage;
+
   omniClientLiveProcess();
+
   auto node = stage->GetPrimAtPath(SdfPath("/Scenario"));
-  try {
-    const std::string json_path = "src/sim_controller/lib/user_config.json";
-    std::ifstream ifs(json_path);
-    if (ifs.is_open()) {
-      nlohmann::json config_data;
-      ifs >> config_data;
-      const auto &mobility = config_data["mobility_config"];
-      
-      cfg.duration = mobility["duration"].get<float>();
-      cfg.interval = mobility["interval"].get<float>();
-      LOG(INFO) << "Loaded duration and interval from JSON file: duration=" 
-                << cfg.duration << ", interval=" << cfg.interval;
-    } else {
-      LOG(WARNING) << "Could not open JSON config file";
-      cfg.duration = 100.0f; //use default values ....for experiment purpose
-      cfg.interval = 0.1f;
-    }
-  } catch (const std::exception &e) {
-    LOG(ERROR) << "Error parsing JSON config: " << e.what();
-    cfg.duration = 100.0f;
-    cfg.interval = 0.1f;
-  }
-  
+
+ // node.GetAttribute(TfToken("sim:duration")).Get(&(cfg.duration));
+  //node.GetAttribute(TfToken("sim:interval")).Get(&(cfg.interval));
+  cfg.duration = 10.0;
+  cfg.interval = 1.0;
   node.GetAttribute(TfToken("sim:num_users")).Get(&(cfg.users));
   node.GetAttribute(TfToken("sim:perc_indoor_procedural_ues"))
       .Get(&(cfg.percentage_indoor_users));
@@ -237,7 +221,9 @@ ASIM_EXPORT void getMobilityParams(aerial::sim::simulation_state *state) {
   const bool no_duration_interval = cfg.duration == 0 || cfg.interval == 0;
   cfg.slot_symbol_mode = no_duration_interval;
   if (no_duration_interval) {
-    LOG(INFO) << "Duration or interval is zero, using slot/symbol mode";
+    LOG(INFO) << "Did not find attributes sim:duration/sim:interval with a "
+                 "positive value so "
+                 "using slot/symbol instead";
     if (cfg.samples_per_slot == 0) {
       cfg.samples_per_slot = 1;
     }
@@ -254,7 +240,8 @@ ASIM_EXPORT void getMobilityParams(aerial::sim::simulation_state *state) {
     cfg.duration = cfg.slots_per_batch * slot_time_in_seconds;
     cfg.interval = slot_time_in_seconds / cfg.samples_per_slot;
   } else {
-    LOG(INFO) << "Using duration/interval mode";
+    LOG(INFO) << "Found attributes sim:duration/sim:interval so "
+                 "using default value of 1 sample per slot";
     cfg.samples_per_slot = 1;
     cfg.slots_per_batch = 0;
   }
@@ -288,6 +275,9 @@ ASIM_EXPORT void getMobilityParams(aerial::sim::simulation_state *state) {
   cfg.panel_ue = ue_panel.GetString();
 
   cfg.scale = UsdGeomGetStageMetersPerUnit(stage);
+
+  // stage->GetMetadata(pxr::TfToken("metersPerUnit"), &(cfg.scale));
+
   cfg.scale = 1 / cfg.scale;
   LOG(VERBOSE) << "scale=" << cfg.scale;
 
@@ -296,198 +286,167 @@ ASIM_EXPORT void getMobilityParams(aerial::sim::simulation_state *state) {
 
 ASIM_EXPORT int32_t getManualUsers(aerial::sim::simulation_state *state,
                                    std::vector<aerial::sim::mm::user> &users) {
-  static const TfToken TOKEN_USER_ID("aerial:ue:user_id");
-  static const TfToken TOKEN_MANUAL("aerial:ue:manual");
-  static const TfToken TOKEN_WAYPOINTS("aerial:ue:waypoints");
-  static const TfToken TOKEN_WAYPOINT_SPEED("aerial:ue:waypoint_speed");
-  static const TfToken TOKEN_WAYPOINT_PAUSE(
-      "aerial:ue:waypoint_pause_duration");
-  static const TfToken TOKEN_WAYPOINT_AZIMUTH(
-      "aerial:ue:waypoint_azimuth_offset");
-  static const TfToken TOKEN_HEIGHT("height");
-  static const TfToken TOKEN_RADIUS("radius");
-  static const TfToken TOKEN_NUM_USERS("sim:num_users");
-
   const auto &cfg = state->get_mm_config();
+
   UsdStageRefPtr stage = state->get_aerial_stage().int_stage;
-  omniClientLiveProcess();
 
-  int32_t ret = 0;
+  omniClientLiveProcess(); //??
+
+  auto prims = stage->Traverse();
+
   unsigned int num_manual_users = 0;
+  int32_t ret = 0;
 
-  // loading from JSON
-  aerial::sim::utils::JsonUserLoader loader(
-      "src/sim_controller/lib/user_config.json");
-  bool jsonLoaded = loader.loadUsers();
+  for (auto k = prims.begin(); k != prims.end(); k++) {
 
-  if (jsonLoaded) {
-    for (const auto &user : loader.getUsers()) {
-      double offset_z_height = 0.0;
-      double offset_z_radius = 0.0;
-      double offset_z = offset_z_height / 2 + offset_z_radius;
-
-      std::vector<aerial::sim::mm::waypoint_params> wp_params_list;
-      std::vector<float3> waypoint_vec;
-
-      auto waypoint_config =
-          user.waypoint_config == "user_defined"
-              ? aerial::sim::mm::waypoint_config::user_defined
-              : aerial::sim::mm::waypoint_config::none;
-
-      if (!user.waypoints.empty()) {
-        waypoint_vec.reserve(user.waypoints.size());
-        wp_params_list.reserve(user.waypoints.size());
-
-        for (const auto &wp : user.waypoints) {
-          waypoint_vec.push_back(make_float3(wp.x, wp.y, wp.z));
-          wp_params_list.push_back(
-              {static_cast<float>(wp.speed_mps * cfg.scale), wp.stop_sec,
-               static_cast<float>(wp.azimuth_offset_rad * M_PI_F / 180.0f)});
-        }
-      } else if (user.has_position) {
-        float3 point =
-            make_float3(user.pos_x, user.pos_y, user.pos_z - offset_z);
-        waypoint_vec.push_back(point);
-      }
-
-      if ((ret = state->add_manual_user(waypoint_vec, user.id, waypoint_config,
-                                        wp_params_list, users)) != 0) {
-        return ret;
-      }
-      num_manual_users += 1;
+    if (!k->IsValid()) {
+      continue;
     }
-  } else {
-    // Fall back to original USD stage traversal
-    auto prims = stage->Traverse();
 
-    for (auto k = prims.begin(); k != prims.end(); k++) {
-      if (!k->IsValid()) {
-        continue;
-      }
+    if (k->HasProperty(TfToken("aerial:ue:user_id"))) {
+      unsigned int buffer;
+      bool is_manual;
 
-      if (k->HasProperty(TOKEN_USER_ID)) {
-        unsigned int buffer;
-        bool is_manual;
+      k->GetAttribute(TfToken("aerial:ue:user_id")).Get(&buffer);
+      k->GetAttribute(TfToken("aerial:ue:manual")).Get(&is_manual);
 
-        k->GetAttribute(TOKEN_USER_ID).Get(&buffer);
-        k->GetAttribute(TOKEN_MANUAL).Get(&is_manual);
+      if (is_manual) {
+        unsigned int ID = buffer;
 
-        if (is_manual) {
-          unsigned int ID = buffer;
+        double offset_z_height;
+        double offset_z_radius;
 
-          double offset_z_height;
-          double offset_z_radius;
+        // These offsets are based on UE capsule dimensions
+        k->GetAttribute(pxr::TfToken("height")).Get(&offset_z_height);
+        k->GetAttribute(pxr::TfToken("radius")).Get(&offset_z_radius);
 
-          k->GetAttribute(TOKEN_HEIGHT).Get(&offset_z_height);
-          k->GetAttribute(TOKEN_RADIUS).Get(&offset_z_radius);
+        double offset_z = offset_z_height / 2 + offset_z_radius;
 
-          double offset_z = offset_z_height / 2 + offset_z_radius;
+        pxr::VtArray<pxr::GfVec3f> waypoints;
 
-          pxr::VtArray<pxr::GfVec3f> waypoints;
-          if (const auto wps = k->GetAttribute(TOKEN_WAYPOINTS);
-              wps.IsValid()) {
-            if (!wps.Get(&waypoints)) {
-              LOG(DEBUG) << "Did not find aerial:ue:waypoints attribute for UE " << ID;
-            }
+        if (const auto wps =
+                k->GetAttribute(pxr::TfToken("aerial:ue:waypoints"));
+            wps.IsValid()) {
+          if (!wps.Get(&waypoints)) {
+            LOG(DEBUG) << "Did not find aerial:ue:waypoints attribute for UE "
+                       << ID
+                       << ". Treating it as a manual UE without user-defined "
+                          "waypoints.";
           }
+        } // else, no waypoints and waypoints would be empty
+        pxr::VtArray<float> waypoint_attributes_speed_list{};
+        pxr::VtArray<float> waypoint_attributes_pause_duration_list{};
+        pxr::VtArray<float> waypoint_attributes_azimuth_offset_list{};
 
-          pxr::VtArray<float> waypoint_attributes_speed_list{};
-          pxr::VtArray<float> waypoint_attributes_pause_duration_list{};
-          pxr::VtArray<float> waypoint_attributes_azimuth_offset_list{};
+        const auto wp_attributes_speed =
+            k->GetAttribute(pxr::TfToken("aerial:ue:waypoint_speed"));
+        const auto wp_attributes_pause_duration =
+            k->GetAttribute(pxr::TfToken("aerial:ue:waypoint_pause_duration"));
+        const auto wp_attributes_azimuth_offset =
+            k->GetAttribute(pxr::TfToken("aerial:ue:waypoint_azimuth_offset"));
 
-          const auto wp_attributes_speed =
-              k->GetAttribute(TOKEN_WAYPOINT_SPEED);
-          const auto wp_attributes_pause_duration =
-              k->GetAttribute(TOKEN_WAYPOINT_PAUSE);
-          const auto wp_attributes_azimuth_offset =
-              k->GetAttribute(TOKEN_WAYPOINT_AZIMUTH);
-
-          if (wp_attributes_speed.IsValid()) {
-            wp_attributes_speed.Get(&waypoint_attributes_speed_list);
+        if (wp_attributes_speed.IsValid()) {
+          if (!wp_attributes_speed.Get(&waypoint_attributes_speed_list)) {
+            LOG(DEBUG) << "Did not find aerial:ue:waypoint_speed "
+                          "attribute for UE "
+                       << ID;
           }
-          if (wp_attributes_pause_duration.IsValid()) {
-            wp_attributes_pause_duration.Get(
-                &waypoint_attributes_pause_duration_list);
-          }
-          if (wp_attributes_azimuth_offset.IsValid()) {
-            wp_attributes_azimuth_offset.Get(
-                &waypoint_attributes_azimuth_offset_list);
-          }
-
-          std::vector<aerial::sim::mm::waypoint_params> wp_params_list;
-          if (not waypoints.empty()) {
-            std::vector<float3> waypoint_vec;
-            waypoint_vec.reserve(waypoints.size());
-            for (const auto &wp : waypoints) {
-              waypoint_vec.push_back(make_float3(wp[0], wp[1], wp[2]));
-            }
-
-            if (not waypoint_attributes_speed_list.empty() &&
-                not waypoint_attributes_pause_duration_list.empty() &&
-                not waypoint_attributes_azimuth_offset_list.empty()) {
-
-              for (uint32_t wp_idx = 0;
-                   wp_idx < waypoint_attributes_speed_list.size(); wp_idx++) {
-                wp_params_list.push_back(aerial::sim::mm::waypoint_params{
-                    static_cast<float>(waypoint_attributes_speed_list[wp_idx] *
-                                       cfg.scale),
-                    static_cast<float>(
-                        waypoint_attributes_pause_duration_list[wp_idx]),
-                    static_cast<float>(
-                        waypoint_attributes_azimuth_offset_list[wp_idx] *
-                        M_PI_F / 180.0)});
-              }
-            }
-
-            constexpr auto user_defined_waypoints =
-                aerial::sim::mm::waypoint_config::user_defined;
-            if ((ret = state->add_manual_user(waypoint_vec, ID,
-                                              user_defined_waypoints,
-                                              wp_params_list, users)) != 0) {
-              return ret;
-            }
-          } else {
-            pxr::GfVec3d translate{};
-            pxr::GfVec3f rotate{};
-            pxr::GfVec3f scale{};
-            pxr::GfVec3f pivot{};
-            pxr::UsdGeomXformCommonAPI::RotationOrder rot{};
-            pxr::UsdGeomXformCommonAPI xform_api(*k);
-            if (const auto r = xform_api.GetXformVectors(&translate, &rotate,
-                                                         &scale, &pivot, &rot,
-                                                         pxr::UsdTimeCode(0));
-                !r) {
-              LOG(ERROR) << "Failed to call GetXformVectors";
-              return -1;
-            }
-
-            float3 point = make_float3(translate[0], translate[1],
-                                       translate[2] - offset_z);
-            std::vector<float3> waypoint_vec = {point};
-            constexpr auto no_user_defined_waypoints =
-                aerial::sim::mm::waypoint_config::none;
-            if ((ret = state->add_manual_user(waypoint_vec, ID,
-                                              no_user_defined_waypoints,
-                                              wp_params_list, users)) != 0) {
-              return ret;
-            }
-          }
-          num_manual_users += 1;
         }
+        if (wp_attributes_pause_duration.IsValid()) {
+          if (!wp_attributes_pause_duration.Get(
+                  &waypoint_attributes_pause_duration_list)) {
+            LOG(DEBUG) << "Did not find aerial:ue:waypoint_pause_duration "
+                          "attribute for UE "
+                       << ID;
+          }
+        }
+        if (wp_attributes_azimuth_offset.IsValid()) {
+          if (!wp_attributes_azimuth_offset.Get(
+                  &waypoint_attributes_azimuth_offset_list)) {
+            LOG(DEBUG) << "Did not find aerial:ue:waypoint_azimuth_offset "
+                          "attribute for UE "
+                       << ID;
+          }
+        }
+        std::vector<aerial::sim::mm::waypoint_params> wp_params_list;
+        if (not waypoints.empty()) {
+          std::vector<float3> waypoint_vec;
+          waypoint_vec.reserve(waypoints.size());
+          for (const auto &wp : waypoints) {
+            waypoint_vec.push_back(make_float3(wp[0], wp[1], wp[2]));
+          }
+
+          if (not waypoint_attributes_speed_list.empty() &&
+              not waypoint_attributes_pause_duration_list.empty() &&
+              not waypoint_attributes_azimuth_offset_list.empty()) {
+
+            for (uint32_t wp_idx = 0;
+                 wp_idx < waypoint_attributes_speed_list.size(); wp_idx++) {
+              wp_params_list.push_back(aerial::sim::mm::waypoint_params{
+                  static_cast<float>(waypoint_attributes_speed_list[wp_idx] *
+                                     cfg.scale),
+                  static_cast<float>(
+                      waypoint_attributes_pause_duration_list[wp_idx]),
+                  // Converting azimuth offset in degree to radians
+                  static_cast<float>(
+                      waypoint_attributes_azimuth_offset_list[wp_idx] * M_PI_F /
+                      180.0)});
+            }
+          }
+
+          constexpr auto user_defined_waypoints =
+              aerial::sim::mm::waypoint_config::user_defined;
+          if ((ret = state->add_manual_user(waypoint_vec, ID,
+                                            user_defined_waypoints,
+                                            wp_params_list, users)) != 0) {
+            return ret;
+          }
+        } else {
+          pxr::GfVec3d translate{};
+          pxr::GfVec3f rotate{};
+          pxr::GfVec3f scale{};
+          pxr::GfVec3f pivot{};
+          pxr::UsdGeomXformCommonAPI::RotationOrder rot{};
+          pxr::UsdGeomXformCommonAPI xform_api(*k);
+          if (const auto r =
+                  xform_api.GetXformVectors(&translate, &rotate, &scale, &pivot,
+                                            &rot, pxr::UsdTimeCode(0));
+              !r) {
+            LOG(ERROR) << "Failed to call GetXformVectors";
+            return -1;
+          }
+
+          // (translate[2] - offset_z) to get the point on the ground
+          float3 point =
+              make_float3(translate[0], translate[1], translate[2] - offset_z);
+          LOG(VERBOSE) << "Manual UE position: (" << point.x << " " << point.y
+                       << " " << point.z << ")";
+
+          std::vector<float3> waypoint_vec = {point};
+          constexpr auto no_user_defined_waypoints =
+              aerial::sim::mm::waypoint_config::none;
+          if ((ret = state->add_manual_user(waypoint_vec, ID,
+                                            no_user_defined_waypoints,
+                                            wp_params_list, users)) != 0) {
+            return ret;
+          }
+        }
+        num_manual_users += 1;
       }
     }
   }
 
   auto copy = cfg;
   auto node = stage->GetPrimAtPath(SdfPath("/Scenario"));
-  node.GetAttribute(TOKEN_NUM_USERS).Get(&(copy.users));
+  node.GetAttribute(TfToken("sim:num_users")).Get(&(copy.users));
 
   if (copy.users < num_manual_users) {
     copy.users = num_manual_users;
-    node.GetAttribute(TOKEN_NUM_USERS).Set(copy.users);
+    node.GetAttribute(TfToken("sim:num_users")).Set(copy.users);
   }
 
   state->set_mm_config(copy);
+
   return ret;
 }
 

@@ -1,13 +1,3 @@
-/***************************************************************************
- # Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
- #
- # NVIDIA CORPORATION and its licensors retain all intellectual property
- # and proprietary rights in and to this software, related documentation
- # and any modifications thereto. Any use, reproduction, disclosure or
- # distribution of this software and related documentation without an express
- # license agreement from NVIDIA CORPORATION is strictly prohibited.
- **************************************************************************/
-
 #include "simulation_state.hpp"
 #include "aerial_emsolver_api.h"
 #include "pxr/base/tf/token.h"
@@ -232,96 +222,237 @@ int32_t simulation_state::build_tx_info(
   return 0;
 }
 
-ASIM_EXPORT int32_t simulation_state::load_deployed_rus() {
-    // Clear existing data
-    get_aerial_stage().tx_info.clear();
-    get_aerial_stage().du_info_map.clear();
-    get_aerial_stage().ru_du_info_map.clear();
+int32_t simulation_state::load_deployed_rus() {
 
-    // Hardcoded DUs (Digital Units)
-    std::vector<du_info> dus = {
-        {.id = 1, .subcarrier_spacing = 30.0, .fft_size = 4096, .num_antennas = 4, .max_channel_bandwidth = 100.0, .center=make_float3(3400.91582f,3400.91582f, 15000.0f)}
-        // {.id = 2, .subcarrier_spacing = 30.0, .fft_size = 4096}
-    };
+  get_aerial_stage().tx_info.clear();
+  get_aerial_stage().du_info_map.clear();
+  get_aerial_stage().ru_du_info_map.clear();
 
-    // Hardcoded RUs (Radio Units)
-    std::vector<emsolver::TXInfo> rus = {
-        {
-            .tx_ID = 1,  // RU ID
-            .tx_center = make_float3(5000.0f, 5000.0f, 4000.0f),  // Position (mm)
-    
-            // Transformation matrix (identity matrix as default)
-            .Ttx = {
-                1.0f, 0.0f, 0.0f, 0.0f,  // Row 0
-                0.0f, 1.0f, 0.0f, 0.0f,  // Row 1
-                0.0f, 0.0f, 1.0f, 0.0f,  // Row 2
-                0.0f, 0.0f, 0.0f, 1.0f   // Row 3
-            },
-    
-            // Panel configuration (single panel with ID 0)
-            .panel_id = {0},
-            .height = 1.5f,  // Height in meters
-            .mech_azimuth_deg = 175.18913f,  // Mechanical azimuth (degrees)
-            .mech_tilt_deg = 0.0f,           // Mechanical tilt (degrees)
-    
-            // RF parameters
-            .carrier_freq = 3600.0f,       // 3.6 GHz
-            .carrier_bandwidth = 100.0f,   // 100 MHz
-            .subcarrier_spacing = 30.0f,   // 30 kHz
-            .fft_size = 4096,              // FFT size
-            .radiated_power = 1.2f,        // 1 Watt (30 dBm)
-    
-            // Antenna configuration (4x half-wave dipoles)
-            .antenna_names = {"halfwave_dipole", "halfwave_dipole", "halfwave_dipole", "halfwave_dipole"},
-            .antenna_pattern_indices = {0, 0, 0, 0},  // All use pattern index 0
-            .dual_polarized_antenna = true,
-    
-            // Antenna rotation (roll, tilt, azimuth in radians)
-            .antenna_rotation_angles = {
-                make_float3(0.0f, 0.0f, 3.057f),  // Polarization 1
-                make_float3(M_PI_2, 0.0f, 3.057f) // Polarization 2 (if dual-polarized)
-            },
-    
-            // Antenna array layout (2x2 grid)
-            .num_loc_antenna_horz = 2,
-            .num_loc_antenna_vert = 1,
-            .loc_antenna = {
-                make_float3(-0.05f, 0.0f, 0.05f),  // Antenna 1
-                make_float3(0.05f, 0.0f, 0.05f),   // Antenna 2
-                make_float3(-0.05f, 0.0f, -0.05f),  // Antenna 3
-                make_float3(0.05f, 0.0f, -0.05f)    // Antenna 4
-            },
-            .ij_antenna = {
-                {0, 0},  // Antenna 1 (i,j indices)
-                {1, 0},   // Antenna 2
-                {0, 1},   // Antenna 3
-                {1, 1}    // Antenna 4
-            }
+  pxr::UsdGeomXformCache xcache;
+  auto aerial_visibility = pxr::TfToken("aerialVisibility");
+
+  for (const auto &node : get_aerial_stage()
+                              .int_stage->GetPrimAtPath(pxr::SdfPath("/DUs"))
+                              .GetAllChildren()) {
+    auto [du_info, ret] =
+        getStageDuInfo(get_aerial_stage().int_stage, node.GetPath());
+    if (ret != 0) {
+      LOG(ERROR) << "error in getStageDuInfo";
+      return -1;
+    }
+    get_aerial_stage().du_info_map[du_info.id] = du_info;
+  }
+
+  // Traverse the stage
+  auto range = get_aerial_stage().int_stage->Traverse();
+  for (const auto &node : range) {
+    if (auto attr = node.GetAttribute(aerial_visibility)) {
+      bool visibility = false;
+      attr.Get(&visibility);
+      if (!visibility) {
+        LOG(VERBOSE) << "Skipping " << node.GetPath()
+                     << " due to visiblity attribute set to invisible";
+        continue;
+      }
+    }
+    if (auto attr = node.GetAttribute(pxr::TfToken("aerial:gnb:cell_id"))) {
+      unsigned int tx_id;
+
+      if (!attr.HasAuthoredValue()) {
+        LOG(WARNING)
+            << "WARNING: RU Node " << node.GetPath().GetString() << " Attr "
+            << attr.GetName().GetString()
+            << " HAS NOT BEEN SET correctly and will not be included as a RU.";
+        continue;
+      }
+
+      if (!attr.Get(&tx_id)) {
+        LOG(ERROR) << "'cell_id' not found for node "
+                   << node.GetPath().GetString();
+        return -1;
+      }
+
+      if (auto attr = node.GetAttribute(pxr::TfToken("aerial:gnb:du_id"))) {
+        unsigned int du_id;
+        if (!attr.Get(&du_id)) {
+          LOG(ERROR) << "DU is not assigned to RU "
+                     << node.GetPath().GetString();
+          return -1;
         }
-    };
 
-    // Add DUs to the map
-    for (const auto& du : dus) {
-        get_aerial_stage().du_info_map[du.id] = du;
+        std::ostringstream stream;
+        stream << "/DUs/du_" << std::setw(4) << std::setfill('0') << du_id;
+        auto [du_info, ret] = getStageDuInfo(get_aerial_stage().int_stage,
+                                             pxr::SdfPath(stream.str()));
+        if (ret != 0) {
+          LOG(ERROR) << "error in getStageDuInfo";
+          return -1;
+        }
+        bool du_manual_assign = true;
+        if (auto attr = node.GetAttribute(
+                pxr::TfToken("aerial:gnb:du_manual_assign"))) {
+          attr.Get(&du_manual_assign);
+        }
+
+        auto subcarrier_spacing = du_info.subcarrier_spacing;
+        // check for consistent scs across all RUs
+        if (get_aerial_stage().tx_info.size() > 0) {
+          if (get_aerial_stage().tx_info[0].subcarrier_spacing <
+              subcarrier_spacing) {
+            LOG(WARNING) << "Found a larger subcarrier spacing in "
+                         << node.GetPath().GetString()
+                         << ": use it across all RUs";
+            for (int tx_idx = 0; tx_idx < get_aerial_stage().tx_info.size();
+                 tx_idx++) {
+              get_aerial_stage().tx_info[tx_idx].subcarrier_spacing =
+                  static_cast<float>(subcarrier_spacing);
+            }
+          } else if (get_aerial_stage().tx_info[0].subcarrier_spacing >
+                     subcarrier_spacing) {
+            LOG(WARNING) << "The subcarrier spacing set for "
+                         << node.GetPath().GetString()
+                         << " is smaller than the max subcarrier spacing "
+                            "across all RUs: use the max value";
+            subcarrier_spacing = static_cast<double>(
+                get_aerial_stage().tx_info[0].subcarrier_spacing);
+          }
+        }
+
+        auto fft_size = du_info.fft_size;
+        if (fft_size > MAX_FFT_SIZE_CONST) {
+          LOG(ERROR) << "FFT size is larger than the maximum allowed number "
+                        "(currently set to "
+                     << MAX_FFT_SIZE_CONST << ")!";
+          return -1;
+        }
+
+        auto scen_node = get_aerial_stage().int_stage->GetPrimAtPath(
+            pxr::SdfPath("/Scenario"));
+        if (auto attr =
+                scen_node.GetAttribute(pxr::TfToken("sim:enable_wideband"))) {
+          bool enable_wideband;
+          if (!attr.Get(&enable_wideband)) {
+            LOG(ERROR) << "Couldn't read 'enable_wideband' for node "
+                       << scen_node.GetPath().GetString();
+            return -1;
+          } else {
+            if (!enable_wideband) {
+              fft_size = 1;
+              LOG(WARNING)
+                  << "Wideband CFRs is disabled for node "
+                  << scen_node.GetPath().GetString()
+                  << ": FFT size is reset to 1 and only CIRs are computed.";
+            }
+          }
+        }
+
+        if (auto attr =
+                node.GetAttribute(pxr::TfToken("aerial:gnb:radiated_power"))) {
+          double radiated_power_w = 0.0;
+          double radiated_power_dbm = 0.0;
+          if (!attr.Get(&radiated_power_dbm)) {
+            LOG(ERROR) << "Couldn't read radiated power for node "
+                       << node.GetPath().GetString();
+            return -1;
+          } else {
+            radiated_power_w = std::pow(10.0, 0.1 * (radiated_power_dbm - 30));
+          }
+
+          double height_from_cylinder_base;
+          if (auto attr = node.GetAttribute(pxr::TfToken(
+                  "aerial:gnb:height"))) // gNB height from cylinder base in m
+          {
+            if (!attr.Get(&height_from_cylinder_base)) {
+              LOG(ERROR) << "Couldn't read gNB height for node "
+                         << node.GetPath().GetString();
+              return -1;
+            }
+
+            if (auto attr = node.GetAttribute(
+                    pxr::TfToken("aerial:gnb:mech_azimuth"))) {
+              double mech_azimuth_deg;
+              if (!attr.Get(&mech_azimuth_deg)) {
+                LOG(ERROR) << "Couldn't read mech. azimuth for node "
+                           << node.GetPath().GetString();
+                return -1;
+              }
+
+              if (auto attr =
+                      node.GetAttribute(pxr::TfToken("aerial:gnb:mech_tilt"))) {
+                double mech_tilt_deg;
+                if (!attr.Get(&mech_tilt_deg)) {
+                  LOG(ERROR) << "Couldn't read mech. tilt for node "
+                             << node.GetPath().GetString();
+                  return -1;
+                }
+
+                if (auto attr = node.GetAttribute(
+                        pxr::TfToken("aerial:gnb:panel_type"))) {
+                  pxr::TfToken panel_type;
+                  if (!attr.Get(&panel_type)) {
+                    LOG(ERROR) << "Couldn't read panel type for node "
+                               << node.GetPath().GetString();
+                    return -1;
+                  } else {
+                    auto tx_panel_path = pxr::SdfPath("/Panels").AppendPath(
+                        pxr::SdfPath(panel_type));
+                    LOG(INFO) << "Found RU panel node at: " << tx_panel_path;
+
+                    const auto tx_panel_id = panel_name_to_index(
+                        panel_type.GetString(),
+                        get_aerial_stage().antenna_info.panels);
+                    if (tx_panel_id < 0) {
+                      return -1;
+                    }
+                    const auto &tx_panel =
+                        get_aerial_stage().antenna_info.panels.at(tx_panel_id);
+                    auto freq = tx_panel.reference_freq;
+                    if (-(fft_size / 2) * subcarrier_spacing + freq < 0) {
+                      LOG(ERROR)
+                          << "The combination of the FFT size (" << fft_size
+                          << "), subcarrier spacing (" << subcarrier_spacing
+                          << " Hz) and carrier frequency (" << freq
+                          << " Hz) is placing subcarriers in the negative "
+                             "frequency axis!";
+                      return -1;
+                    }
+
+                    // buildTXInfo
+                    get_aerial_stage().tx_info.push_back(emsolver::TXInfo{});
+                    ret = build_tx_info(
+                        node, tx_panel, tx_panel_path,
+                        get_aerial_stage().tx_info.back(),
+                        get_aerial_stage().ru_du_info_map, int(tx_id),
+                        int(du_id), du_manual_assign, float(subcarrier_spacing),
+                        int(fft_size), float(radiated_power_w), tx_panel_id,
+                        height_from_cylinder_base, mech_azimuth_deg,
+                        mech_tilt_deg);
+                    if (ret != 0) {
+                      LOG(ERROR) << "error in build_tx_info";
+                      return -1;
+                    }
+                    if (get_aerial_stage().du_info_map.find(du_id) ==
+                        get_aerial_stage().du_info_map.end()) {
+                      LOG(ERROR) << "RU " << tx_id << " is assigned to DU "
+                                 << du_id << " which does not exist";
+                      return -1;
+                    } else {
+                      get_aerial_stage()
+                          .du_info_map[du_id]
+                          .tx_info_idx.emplace_back(
+                              get_aerial_stage().tx_info.size() - 1);
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
+  }
 
-    // Add RUs and their DU associations
-    for (const auto& ru : rus) {
-        // Assign RUs to DUs in round-robin fashion
-        int du_id = (ru.tx_ID - 1) % dus.size() + 1;
-        get_aerial_stage().ru_du_info_map[ru.tx_ID] = {du_id, true}; // true = manual assignment
-        get_aerial_stage().tx_info.push_back(ru);
-        
-        // Add RU index to DU's list
-        get_aerial_stage().du_info_map[du_id].tx_info_idx.push_back(
-            get_aerial_stage().tx_info.size() - 1);
-    }
-
-    // Log deployment
-    LOG(INFO) << "Deployed " << get_aerial_stage().tx_info.size() << " RUs and " 
-              << get_aerial_stage().du_info_map.size() << " DUs with hardcoded values";
-
-    return 0;
+  return 0;
 }
 
 int32_t simulation_state::build_rx_info(unsigned int k,
@@ -577,14 +708,9 @@ int32_t simulation_state::load_deployed_ues() {
         pxr::SdfPath("/Panels").AppendPath(pxr::SdfPath(panel_type));
     LOG(DEBUG) << "Found UE panel node at: " << rx_panel_path;
 
-    if (auto attr = node.GetAttribute(pxr::TfToken("aerial:ue:bler_target"));
 
-        !attr || !attr.Get(&(params.bler_target))) {
-      LOG(ERROR) << "Couldn't read BLER target for node "
-                 << node.GetPath().GetString();
-      return -1;
-    }
-
+    params.bler_target = 0.1f;
+    LOG(INFO)<<"!!!!!!!!!bler tagret set manually!!!!!!";
     get_aerial_stage().rx_info.push_back(emsolver::RXInfo{});
     const auto rx_panel_id = panel_name_to_index(
         panel_type.GetString(), get_aerial_stage().antenna_info.panels);

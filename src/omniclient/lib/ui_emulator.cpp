@@ -1,13 +1,3 @@
-/***************************************************************************
- # Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
- #
- # NVIDIA CORPORATION and its licensors retain all intellectual property
- # and proprietary rights in and to this software, related documentation
- # and any modifications thereto. Any use, reproduction, disclosure or
- # distribution of this software and related documentation without an express
- # license agreement from NVIDIA CORPORATION is strictly prohibited.
-**************************************************************************/
-
 #include <ctime>
 #include <chrono>
 #include <iostream>
@@ -43,8 +33,8 @@ struct ui_config final {
   std::string ue_asset_path = "omniverse://omniverse-server/Users/aerial/assets/ue.usda";
 
   // scene
-  std::string scene_url = "omniverse://omniverse-server/Users/aerial/plateau/kyoto.usd";
-  std::string live_session_name = "asim-session_sarath2_live_session";
+  std::string scene_url = "omniverse://omniverse-server/Users/aerial/plateau/tokyo.usd";
+  std::string live_session_name = "absarath2_live_session";
 };
 
 struct ui_lifecycle final {
@@ -366,7 +356,7 @@ int main() {
             .pattern_type = 2,
             .ampls_theta_complex = {{{1.0f, 0.0f}}},
             .ampls_phi_complex = {{{1.0f, 0.0f}}}
-        }
+	}
     }
   };
   rid = sm->send_message(pid, asim::connector_message::antenna_panels_request,

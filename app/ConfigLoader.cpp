@@ -82,7 +82,7 @@ void StageConfig::loadFromFile(const std::string& filename) {
             }
         }
 
-        ues.push_back(std::move(u));  // <--- push_back properly
+        ues.push_back(std::move(u));
     }
 }
 

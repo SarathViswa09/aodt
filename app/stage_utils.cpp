@@ -16,7 +16,7 @@
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
-void addSimpleDUAndRU(UsdStageRefPtr stage) {
+void addStageParams(UsdStageRefPtr stage) {
     using SC = StageConfig;
     auto& cfg = SC::instance();
 

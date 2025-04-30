@@ -193,7 +193,7 @@ auto handle_open_scene_request(const asim::open_scene_request &osr,
   } else {
     LOG(INFO) << "Omniverse USD Stage Traversal: " << osr.scene_url
               << std::endl;
-    addSimpleDUAndRU(stage);
+    addStageParams(stage);
     stage->GetRootLayer()->Save();
   }
 

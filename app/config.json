@@ -1,108 +1,138 @@
 {
     "DUs": [
-      {
-        "id": 1,
-        "subcarrier_spacing": 30.0,
-        "fft_size": 4096,
-        "num_antennas": 4,
-        "max_channel_bandwidth": 100.0,
-        "position": { "x": -1800.0, "y": 2526.32, "z": 665.906 }
-      },
-      {
-        "id": 2,
-        "subcarrier_spacing": 30.0,
-        "fft_size": 4096,
-        "num_antennas": 4,
-        "max_channel_bandwidth": 100.0,
-        "position": { "x": 2000.0, "y": 3000.0, "z": 700.0 }
-      }
+        {
+            "id": 1,
+            "subcarrier_spacing": 30.0,
+            "fft_size": 4096,
+            "num_antennas": 4,
+            "max_channel_bandwidth": 100.0,
+            "position": { "x": -1800.0, "y": 2526.32, "z": 665.906 }
+        },
+        {
+            "id": 2,
+            "subcarrier_spacing": 30.0,
+            "fft_size": 4096,
+            "num_antennas": 4,
+            "max_channel_bandwidth": 100.0,
+            "position": { "x": 2000.0, "y": 3000.0, "z": 700.0 }
+        }
     ],
     "RUs": [
-      {
-        "cell_id": 1,
-        "du_id": 1,
-        "du_manual_assign": true,
-        "radiated_power": 43.0,
-        "height": 2.5,
-        "mech_azimuth": 0.0,
-        "mech_tilt": 0.0,
-        "panel_type": "panel_01",
-        "position": { "x": -1784.78, "y": 2526.32, "z": 665.906 }
-      },
-      {
-        "cell_id": 2,
-        "du_id": 2,
-        "du_manual_assign": true,
-        "radiated_power": 26.0,
-        "height": 3.0,
-        "mech_azimuth": 10.0,
-        "mech_tilt": 5.0,
-        "panel_type": "panel_01",
-        "position": { "x": 2020.0, "y": 3050.0, "z": 700.0 }
-      }
+        {
+            "cell_id": 1,
+            "du_id": 1,
+            "du_manual_assign": true,
+            "radiated_power": 43.0,
+            "height": 2.5,
+            "mech_azimuth": 0.0,
+            "mech_tilt": 0.0,
+            "panel_type": "panel_01",
+            "position": { "x": -1784.78, "y": 2526.32, "z": 665.906 }
+        },
+        {
+            "cell_id": 2,
+            "du_id": 2,
+            "du_manual_assign": true,
+            "radiated_power": 26.0,
+            "height": 3.0,
+            "mech_azimuth": 10.0,
+            "mech_tilt": 5.0,
+            "panel_type": "panel_01",
+            "position": { "x": 2020.0, "y": 3050.0, "z": 700.0 }
+        }
     ],
     "UEs": [
-      {
-        "user_id": 98,
-        "manual": true,
-        "radiated_power": 23.0,
-        "mech_tilt": 0.0,
-        "panel_type": "panel_01",
-        "bler_target": 0.1,
-        "position": { "x": 10560.3, "y": 3874.09, "z": 0.0 },
-        "waypoint_config": "user_defined",
-        "is_indoor": false,
-        "waypoints": [
-          { "point": { "x": 5000.0, "y": 5000.0, "z": 4000.0 }, "speed_mps": 2.5, "stop_sec": 1.0, "azimuth_offset_rad": 0.1 },
-          { "point": { "x": 7000.0, "y": 7000.0, "z": 4050.0 }, "speed_mps": 2.0, "stop_sec": 0.5, "azimuth_offset_rad": 0.2 },
-          { "point": { "x": 9000.0, "y": 9000.0, "z": 4100.0 }, "speed_mps": 2.3, "stop_sec": 1.5, "azimuth_offset_rad": -0.1 }
-        ]
-      },
-      {
-        "user_id": 99,
-        "manual": true,
-        "radiated_power": 23.0,
-        "mech_tilt": 0.0,
-        "panel_type": "panel_01",
-        "bler_target": 0.1,
-        "position": { "x": 5005.0, "y": 5005.0, "z": 363.915 },
-        "waypoint_config": "user_defined",
-        "is_indoor": false,
-        "waypoints": [
-          { "point": { "x": 5005.0, "y": 5005.0, "z": 363.915 }, "speed_mps": 2.4, "stop_sec": 1.2, "azimuth_offset_rad": 0.15 },
-          { "point": { "x": 7050.0, "y": 7050.0, "z": 3700.0 }, "speed_mps": 2.1, "stop_sec": 0.6, "azimuth_offset_rad": 0.25 }
-        ]
-      },
-      {
-        "user_id": 100,
-        "manual": true,
-        "radiated_power": 23.0,
-        "mech_tilt": 0.0,
-        "panel_type": "panel_01",
-        "bler_target": 0.1,
-        "position": { "x": 5010.0, "y": 5010.0, "z": 370.0 },
-        "waypoint_config": "user_defined",
-        "is_indoor": false,
-        "waypoints": [
-          { "point": { "x": 5010.0, "y": 5010.0, "z": 370.0 }, "speed_mps": 2.4, "stop_sec": 1.0, "azimuth_offset_rad": 0.05 },
-          { "point": { "x": 7100.0, "y": 7100.0, "z": 3750.0 }, "speed_mps": 2.0, "stop_sec": 0.7, "azimuth_offset_rad": 0.2 }
-        ]
-      },
-      {
-        "user_id": 101,
-        "manual": true,
-        "radiated_power": 23.0,
-        "mech_tilt": 0.0,
-        "panel_type": "panel_01",
-        "bler_target": 0.1,
-        "position": { "x": 5020.0, "y": 5020.0, "z": 380.0 },
-        "waypoint_config": "user_defined",
-        "is_indoor": false,
-        "waypoints": [
-          { "point": { "x": 5020.0, "y": 5020.0, "z": 380.0 }, "speed_mps": 2.0, "stop_sec": 1.3, "azimuth_offset_rad": -0.05 },
-          { "point": { "x": 7200.0, "y": 7200.0, "z": 3850.0 }, "speed_mps": 2.2, "stop_sec": 0.8, "azimuth_offset_rad": 0.1 }
-        ]
-      }
+        {
+            "user_id": 98,
+            "manual": true,
+            "radiated_power": 23.0,
+            "mech_tilt": 0.0,
+            "panel_type": "panel_01",
+            "bler_target": 0.1,
+            "position": { "x": 10560.3, "y": 3874.09, "z": 0.0 },
+            "waypoint_config": "user_defined",
+            "is_indoor": false,
+            "waypoints": [
+                { "point": { "x": 5000.0, "y": 5000.0, "z": 4000.0 }, "speed_mps": 2.5, "stop_sec": 1.0, "azimuth_offset_rad": 0.1 },
+                { "point": { "x": 7000.0, "y": 7000.0, "z": 4050.0 }, "speed_mps": 2.0, "stop_sec": 0.5, "azimuth_offset_rad": 0.2 },
+                { "point": { "x": 9000.0, "y": 9000.0, "z": 4100.0 }, "speed_mps": 2.3, "stop_sec": 1.5, "azimuth_offset_rad": -0.1 }
+            ]
+        },
+        {
+            "user_id": 99,
+            "manual": true,
+            "radiated_power": 23.0,
+            "mech_tilt": 0.0,
+            "panel_type": "panel_01",
+            "bler_target": 0.1,
+            "position": { "x": 5005.0, "y": 5005.0, "z": 363.915 },
+            "waypoint_config": "user_defined",
+            "is_indoor": false,
+            "waypoints": [
+                { "point": { "x": 5005.0, "y": 5005.0, "z": 363.915 }, "speed_mps": 2.4, "stop_sec": 1.2, "azimuth_offset_rad": 0.15 },
+                { "point": { "x": 7050.0, "y": 7050.0, "z": 3700.0 }, "speed_mps": 2.1, "stop_sec": 0.6, "azimuth_offset_rad": 0.25 }
+            ]
+        },
+        {
+            "user_id": 100,
+            "manual": true,
+            "radiated_power": 23.0,
+            "mech_tilt": 0.0,
+            "panel_type": "panel_01",
+            "bler_target": 0.1,
+            "position": { "x": 5010.0, "y": 5010.0, "z": 370.0 },
+            "waypoint_config": "user_defined",
+            "is_indoor": false,
+            "waypoints": [
+                { "point": { "x": 5010.0, "y": 5010.0, "z": 370.0 }, "speed_mps": 2.4, "stop_sec": 1.0, "azimuth_offset_rad": 0.05 },
+                { "point": { "x": 7100.0, "y": 7100.0, "z": 3750.0 }, "speed_mps": 2.0, "stop_sec": 0.7, "azimuth_offset_rad": 0.2 }
+            ]
+        },
+        {
+            "user_id": 101,
+            "manual": true,
+            "radiated_power": 23.0,
+            "mech_tilt": 0.0,
+            "panel_type": "panel_01",
+            "bler_target": 0.1,
+            "position": { "x": 5020.0, "y": 5020.0, "z": 380.0 },
+            "waypoint_config": "user_defined",
+            "is_indoor": false,
+            "waypoints": [
+                { "point": { "x": 5020.0, "y": 5020.0, "z": 380.0 }, "speed_mps": 2.0, "stop_sec": 1.3, "azimuth_offset_rad": -0.05 },
+                { "point": { "x": 7200.0, "y": 7200.0, "z": 3850.0 }, "speed_mps": 2.2, "stop_sec": 0.8, "azimuth_offset_rad": 0.1 }
+            ]
+        },
+        {
+            "user_id": 1,
+            "manual": true,
+            "radiated_power": 23.0,
+            "mech_tilt": 0.0,
+            "panel_type": "panel_01",
+            "bler_target": 0.1,
+            "position": { "x": 6002.8945, "y": 6002.8945, "z": 366.14606 },
+            "waypoint_config": "user_defined",
+            "is_indoor": false,
+            "waypoints": [
+                { "point": { "x": 6180.219, "y": 6180.219, "z": 361.40283 }, "speed_mps": 2.0, "stop_sec": 1.3, "azimuth_offset_rad": -0.05 },
+                { "point": { "x": 6292.6763, "y": 6292.6763, "z": 360.03732 }, "speed_mps": 2.2, "stop_sec": 0.8, "azimuth_offset_rad": 0.1 }
+            ]
+        },
+
+        {
+            "user_id": 2,
+            "manual": true,
+            "radiated_power": 19.0,
+            "mech_tilt": 0.0,
+            "panel_type": "panel_01",
+            "bler_target": 0.1,
+            "position": { "x": 6414.589, "y": 6414.589, "z": 360.47998 },
+            "waypoint_config": "user_defined",
+            "is_indoor": false,
+            "waypoints": [
+                { "point": { "x": 6460.521, "y": 6460.521, "z": 360.64676 }, "speed_mps": 2.4, "stop_sec": 1.0, "azimuth_offset_rad": -0.05 },
+                { "point": { "x": 6493.134, "y": 6493.134, "z": 360.76517 }, "speed_mps": 2.0, "stop_sec": 0.8, "azimuth_offset_rad": 0.1 }
+            ]
+        }
     ]
-  }
-  
+}

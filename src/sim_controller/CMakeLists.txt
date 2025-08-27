@@ -9,7 +9,6 @@ add_library(sim_controller
   lib/asim_cuda_checks.cpp
   lib/real_cuda_compile_and_runtime_env.cpp
   lib/time_sample.cpp
-  lib/json_loader_for_user.cpp
 )
 
 set_property(TARGET sim_controller PROPERTY POSITION_INDEPENDENT_CODE ON)
